@@ -1,0 +1,172 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: geth-node
+  namespace: ifinchain
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"  # Deploy StatefulSet after services
+spec:
+  serviceName: geth-node
+  replicas: 3
+  selector:
+    matchLabels:
+      app: geth-node
+  template:
+    metadata:
+      labels:
+        app: geth-node
+    spec:
+      containers:
+      - name: geth
+        image: ethereum/client-go:v1.10.26
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Wait for address file to be ready
+          while [ ! -s /root/.ethereum/address ]; do 
+            echo "Waiting for address file..."
+            sleep 1
+          done
+          
+          ACCOUNT=$(cat /root/.ethereum/address)
+          echo "Starting geth with account: $ACCOUNT"
+          
+          # Initialize genesis block
+          geth init /root/.ethereum/genesis.json
+          
+          # Wait for other nodes to be ready
+          sleep 10
+          
+          exec geth \
+            --datadir /root/.ethereum \
+            --networkid 1337 \
+            --syncmode full \
+            --port 30303 \
+            --http \
+            --http.addr "0.0.0.0" \
+            --http.port "8545" \
+            --http.corsdomain "*" \
+            --http.api "admin,debug,web3,eth,txpool,personal,clique,miner,net" \
+            --ws \
+            --ws.addr "0.0.0.0" \
+            --ws.port "8546" \
+            --ws.api "admin,debug,web3,eth,txpool,personal,clique,miner,net" \
+            --unlock "$ACCOUNT" \
+            --password /root/.ethereum/password.txt \
+            --mine \
+            --allow-insecure-unlock \
+            --miner.etherbase "$ACCOUNT" \
+            --nat "none" \
+            --verbosity 5 \
+            --gcmode "archive" \
+            --metrics --metrics.expensive --metrics.addr="0.0.0.0" --metrics.port=6060 \
+            --nodiscover \
+            --log.debug
+        ports:
+        - containerPort: 8545
+          name: rpc
+        - containerPort: 8546
+          name: ws
+        - containerPort: 30303
+          name: discovery
+        volumeMounts:
+        - name: ethereum-storage
+          mountPath: /root/.ethereum
+        - name: node-keys
+          mountPath: /nodekeys
+        - name: genesis-config
+          mountPath: /config/genesis
+        - name: static-nodes
+          mountPath: /config/static-nodes
+      initContainers:
+      - name: init-ethereum
+        image: ethereum/client-go:v1.10.26
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Create all required directories first
+          mkdir -p /root/.ethereum/geth
+          mkdir -p /root/.ethereum/keystore
+          
+          # Clean up any existing chain data
+          rm -rf /root/.ethereum/geth/chaindata
+          rm -rf /root/.ethereum/geth/lightchaindata
+          
+          # Copy nodekey to geth directory
+          POD_INDEX=$(echo $HOSTNAME | rev | cut -d'-' -f1 | rev)
+          NODE_NUM=$((POD_INDEX + 1))
+          cp /nodekeys/node${NODE_NUM}_nodekey /root/.ethereum/geth/nodekey
+          
+          # Copy account keystore and password
+          cp /nodekeys/node${NODE_NUM}_keystore /root/.ethereum/keystore/
+          cp /nodekeys/password.txt /root/.ethereum/password.txt
+          
+          # Get and save account address
+          ADDRESS=$(geth account list --keystore /root/.ethereum/keystore 2>/dev/null | head -1 | grep -o '{.*}' | tr -d '{}')
+          if [ -z "$ADDRESS" ]; then
+            echo "Failed to get account address" >&2
+            exit 1
+          fi
+          echo "0x$ADDRESS" > /root/.ethereum/address
+          
+          # Copy genesis and static nodes files
+          cp /config/genesis/genesis.json /root/.ethereum/genesis.json
+          cp /config/static-nodes/static-nodes.json /root/.ethereum/geth/static-nodes.json
+          cp /config/static-nodes/static-nodes.json /root/.ethereum/geth/trusted-nodes.json
+          
+          # Display genesis file content
+          echo "Genesis file content:"
+          cat /root/.ethereum/genesis.json
+          
+          echo "Initializing genesis block..."
+          geth init /root/.ethereum/genesis.json
+          
+          if [ $? -ne 0 ]; then
+            echo "Failed to initialize genesis block"
+            exit 1
+          fi
+          
+          echo "Node initialization complete"
+          echo "Using account address: $(cat /root/.ethereum/address)"
+          echo "Static nodes configuration:"
+          cat /root/.ethereum/geth/static-nodes.json
+        volumeMounts:
+        - name: ethereum-storage
+          mountPath: /root/.ethereum
+        - name: node-keys
+          mountPath: /nodekeys
+        - name: genesis-config
+          mountPath: /config/genesis
+        - name: static-nodes
+          mountPath: /config/static-nodes
+      volumes:
+      - name: genesis-config
+        configMap:
+          name: geth-genesis-config
+          items:
+          - key: genesis.json
+            path: genesis.json
+      - name: static-nodes
+        configMap:
+          name: geth-static-nodes
+          items:
+          - key: static-nodes.json
+            path: static-nodes.json
+      - name: node-keys
+        secret:
+          secretName: geth-node-keys
+  volumeClaimTemplates:
+  - metadata:
+      name: ethereum-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 50Gi

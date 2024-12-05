@@ -1,0 +1,25 @@
+# Node data and keys
+data/
+**/nodekey
+**/geth
+**/keystore
+
+# Password files
+*.txt
+
+# Kubernetes secrets
+*-secret.yaml
+
+# Environment files
+.env
+*.env
+
+# OS specific
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
