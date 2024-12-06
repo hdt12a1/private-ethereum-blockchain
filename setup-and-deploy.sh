@@ -78,7 +78,13 @@ echo -e "\nSetting up ${GREEN}$VALIDATOR_COUNT${NC} validators...\n"
 
 # Update StatefulSet replicas count
 echo -e "\n${GREEN}Updating StatefulSet configuration...${NC}"
-sed -i '' "s/replicas: [0-9]*/replicas: $VALIDATOR_COUNT/" "$SCRIPT_DIR/k8s/geth-statefulset.yaml"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS version
+    sed -i '' "s/replicas: [0-9]*/replicas: $VALIDATOR_COUNT/" "$SCRIPT_DIR/k8s/geth-statefulset.yaml"
+else
+    # Linux version
+    sed -i "s/replicas: [0-9]*/replicas: $VALIDATOR_COUNT/" "$SCRIPT_DIR/k8s/geth-statefulset.yaml"
+fi
 
 # Export validator count for child scripts
 export VALIDATOR_COUNT

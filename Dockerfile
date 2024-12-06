@@ -11,9 +11,6 @@ RUN apk add --no-cache \
     vim \
     tree
 
-# Create ethereum data directory
-RUN mkdir -p /root/.ethereum/geth
-
 WORKDIR /app
 
 ENTRYPOINT []
