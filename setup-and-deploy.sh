@@ -20,12 +20,6 @@ if ! command -v geth &> /dev/null; then
     exit 1
 fi
 
-# Check if kubectl is installed
-if ! command -v kubectl &> /dev/null; then
-    echo -e "${RED}kubectl is not installed. Please install kubectl first.${NC}"
-    exit 1
-fi
-
 # Create necessary directories
 mkdir -p "$SCRIPT_DIR/data"
 chmod 755 "$SCRIPT_DIR/data"
