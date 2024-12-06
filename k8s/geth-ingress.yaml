@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: geth-node-ingress
-  namespace: ifinchain
+  namespace: ducktapboiii
   annotations:
     argocd.argoproj.io/sync-wave: "4"  # Deploy Ingress last
     nginx.ingress.kubernetes.io/rewrite-target: /$2
@@ -21,6 +21,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: eth-rpc
+            name: geth-rpc
             port:
               number: 8545
